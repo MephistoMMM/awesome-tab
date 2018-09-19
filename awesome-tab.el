@@ -253,7 +253,7 @@ Optional argument REVERSED default is move backward, if reversed is non-nil move
 ;;;;;;;;;;;;;;;;;;;;;;; Default configurations ;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Loading tabbar mode.
-(tabbar-mode t)
+;; (tabbar-mode t)
 
 ;; Uniquify tab name when open multiple buffers with same filename.
 (setq uniquify-separator "/")
