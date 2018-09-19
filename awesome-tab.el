@@ -165,6 +165,7 @@ Default is t."
                     )
 
 ;;;;;;;;;;;;;;;;;;;;;;; Interactive functions ;;;;;;;;;;;;;;;;;;;;;;;
+;;;###autoload
 (defun tabbar-switch-group (&optional groupname)
   "Switch tab groups using ido."
   (interactive)
@@ -184,11 +185,13 @@ Default is t."
              (throw 'done (switch-to-buffer (car (cdr group))))))
        tab-buffer-list) )))
 
+;;;###autoload
 (defun tabbar-select-end-tab ()
   "Select end tab of current tabset."
   (interactive)
   (tabbar-select-beg-tab t))
 
+;;;###autoload
 (defun tabbar-select-beg-tab (&optional backward type)
   "Select beginning tab of current tabs.
 If BACKWARD is non-nil, move backward, otherwise move forward.
@@ -207,6 +210,7 @@ TYPE is default option."
             tab (car (if backward (last tabset) tabset)))
       (tabbar-click-on-tab tab type))))
 
+;;;###autoload
 (defun tabbar-backward-tab-other-window (&optional reversed)
   "Move to left tab in other window.
 Optional argument REVERSED default is move backward, if reversed is non-nil move forward."
@@ -217,11 +221,13 @@ Optional argument REVERSED default is move backward, if reversed is non-nil move
     (tabbar-backward-tab))
   (other-window -1))
 
+;;;###autoload
 (defun tabbar-forward-tab-other-window ()
   "Move to right tab in other window."
   (interactive)
   (tabbar-backward-tab-other-window t))
 
+;;;###autoload
 (defun tabbar-kill-all-buffers-in-current-group ()
   "Kill all buffers in current group."
   (interactive)
@@ -237,6 +243,28 @@ Optional argument REVERSED default is move backward, if reversed is non-nil move
     ;; Switch to next group.
     (tabbar-forward-group)
     ))
+
+;;;###autoload
+(defun tabbar-toggle-tabbar-mode()
+  "Toggle tabbar mode."
+  (interactive)
+  (if tabbar-mode
+;;; TO OFF
+      (tabbar-mode -1)
+;;; TO ON
+    (tabbar-mode t)))
+
+;;;###autoload
+(defun tabbar-toggle-tabbar-mode-on()
+  "Toggle tabbar mode on."
+  (interactive)
+  (unless tabbar-mode (tabbar-mode t)))
+
+;;;###autoload
+(defun tabbar-toggle-tabbar-mode-off()
+  "Toggle tabbar mode."
+  (interactive)
+  (when tabbar-mode (tabbar-mode -1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;; Utils functions ;;;;;;;;;;;;;;;;;;;;;;;
 (defun tabbar-filter (condp lst)
