@@ -137,10 +137,6 @@ Default is t."
               tabbar-scroll-right-button (quote (("") "")))))
   :group 'tabbar)
 
-(custom-set-variables
- '(tabbar-background-color tabbar-background-color)
- )
-
 (custom-set-faces
  '(tabbar-default ((t (:height 1.3))))
  '(tabbar-selected ((t (:inherit tabbar-default :weight ultra-bold :width semi-expanded))))
@@ -156,12 +152,12 @@ Default is t."
 
 (set-face-attribute 'tabbar-selected nil
                     :foreground tabbar-active-color
-                    :overline tabbar-active-color
+                    :underline tabbar-active-color
                     )
 
 (set-face-attribute 'tabbar-unselected nil
                     :foreground tabbar-inactive-color
-                    :overline tabbar-inactive-color
+                    :underline tabbar-inactive-color
                     )
 
 ;;;;;;;;;;;;;;;;;;;;;;; Interactive functions ;;;;;;;;;;;;;;;;;;;;;;;
