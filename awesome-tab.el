@@ -6,8 +6,8 @@
 ;; Maintainer: Andy Stewart <lazycat.manatee@gmail.com>
 ;; Copyright (C) 2018, Andy Stewart, all rights reserved.
 ;; Created: 2018-09-17 22:14:34
-;; Version: 0.6
-;; Last-Updated: 2018-09-20 18:02:42
+;; Version: 1.0
+;; Last-Updated: 2018-09-25 19:33:44
 ;;           By: Andy Stewart
 ;; URL: http://www.emacswiki.org/emacs/download/awesome-tab.el
 ;; Keywords:
@@ -54,6 +54,7 @@
 ;; And the following to your ~/.emacs startup file.
 ;;
 ;; (require 'awesome-tab)
+;; (awesome-tab-mode t)
 ;;
 ;; No need more.
 ;;
@@ -64,6 +65,7 @@
 ;; `awesome-tab-select-end-tab'
 ;; `awesome-tab-forward-tab-other-window'
 ;; `awesome-tab-backward-tab-other-window'
+;; `awesome-tab-kill-other-buffers-in-current-group'
 ;; `awesome-tab-kill-all-buffers-in-current-group'
 ;; `awesome-tab-kill-match-buffers-in-current-group'
 ;; `awesome-tab-keep-match-buffers-in-current-group'
@@ -85,6 +87,16 @@
 ;;
 
 ;;; Change log:
+;;
+;; 2018/09/29
+;;      * Add new command `awesome-tab-kill-other-buffers-in-current-group'
+;;      * Not enable mode default.
+;;
+;; 2018/09/25
+;;      * Adjust magit regexp to only match magit buffer, not file that named with magit.
+;;
+;; 2018/09/22
+;;      * Adjust `awesome-tab-buffer-list' to hide unused buffer to user.
 ;;
 ;; 2018/09/20
 ;;      * Remove empty header line from magit buffers.
@@ -1400,19 +1412,34 @@ buffers.")
 It must return a list of group names, or nil if the buffer has no
 group.  Notice that it is better that a buffer belongs to one group.")
 
+(defun awesome-tab-filter (condp lst)
+  (delq nil
+        (mapcar (lambda (x) (and (funcall condp x) x)) lst)))
+
 (defun awesome-tab-buffer-list ()
   "Return the list of buffers to show in tabs.
 Exclude buffers whose name starts with a space, when they are not
 visiting a file.  The current buffer is always included."
-  (delq nil
-        (mapcar #'(lambda (b)
-                    (cond
-                     ;; Always include the current buffer.
-                     ((eq (current-buffer) b) b)
-                     ((buffer-file-name b) b)
-                     ((char-equal ?\  (aref (buffer-name b) 0)) nil)
-                     ((buffer-live-p b) b)))
-                (buffer-list))))
+  (awesome-tab-filter
+   (lambda (x)
+     (let ((name (format "%s" x)))
+       (and
+        (not (string-prefix-p "*epc" name))
+        (not (string-prefix-p "*helm" name))
+        (not (string-prefix-p "*Compile-Log*" name))
+        (not (string-prefix-p "*lsp" name))
+        (not (and (string-prefix-p "magit" name)
+                  (not (file-name-extension name))))
+        )))
+   (delq nil
+         (mapcar #'(lambda (b)
+                     (cond
+                      ;; Always include the current buffer.
+                      ((eq (current-buffer) b) b)
+                      ((buffer-file-name b) b)
+                      ((char-equal ?\  (aref (buffer-name b) 0)) nil)
+                      ((buffer-live-p b) b)))
+                 (buffer-list)))))
 
 (defun awesome-tab-buffer-mode-derived-p (mode parents)
   "Return non-nil if MODE derives from a mode in PARENTS."
@@ -1752,6 +1779,17 @@ Optional argument REVERSED default is move backward, if reversed is non-nil move
     ))
 
 ;;;###autoload
+(defun awesome-tab-kill-other-buffers-in-current-group ()
+  "Kill all buffers except current buffer in current group."
+  (interactive)
+  (let* ((current-group-name (cdr (awesome-tab-selected-tab (awesome-tab-current-tabset t))))
+         (currentbuffer (current-buffer)))
+    ;; Kill all buffers in current group.
+    (awesome-tab-kill-buffer-match-rule
+     (lambda (buffer) (not (equal buffer currentbuffer))))
+    ))
+
+;;;###autoload
 (defun awesome-tab-kill-match-buffers-in-current-group ()
   "Kill all buffers match extension in current group."
   (interactive)
@@ -1814,10 +1852,6 @@ Optional argument REVERSED default is move backward, if reversed is non-nil move
   (when awesome-tab-mode (awesome-tab-mode -1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;; Utils functions ;;;;;;;;;;;;;;;;;;;;;;;
-(defun awesome-tab-filter (condp lst)
-  (delq nil
-        (mapcar (lambda (x) (and (funcall condp x) x)) lst)))
-
 (defun awesome-tab-get-groups ()
   ;; Refresh groups.
   (set awesome-tab-tabsets-tabset (awesome-tab-map-tabsets 'awesome-tab-selected-tab))
