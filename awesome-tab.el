@@ -6,8 +6,8 @@
 ;; Maintainer: Andy Stewart <lazycat.manatee@gmail.com>
 ;; Copyright (C) 2018, Andy Stewart, all rights reserved.
 ;; Created: 2018-09-17 22:14:34
-;; Version: 1.0
-;; Last-Updated: 2018-09-25 19:33:44
+;; Version: 1.6
+;; Last-Updated: 2019-02-23 14:21:32
 ;;           By: Andy Stewart
 ;; URL: http://www.emacswiki.org/emacs/download/awesome-tab.el
 ;; Keywords:
@@ -15,7 +15,7 @@
 ;;
 ;; Features that might be required by this library:
 ;;
-;; `projectile'
+;;
 ;;
 
 ;;; This file is NOT part of GNU Emacs
@@ -44,9 +44,7 @@
 
 ;;; Installation:
 ;;
-;; You need install projectile (https://github.com/bbatsov/projectile) first.
-;;
-;; Then put awesome-tab.el to your load-path.
+;; Put awesome-tab.el to your load-path.
 ;; The load-path is usually ~/elisp/.
 ;; It's set in your ~/.emacs like this:
 ;; (add-to-list 'load-path (expand-file-name "~/elisp"))
@@ -88,6 +86,24 @@
 
 ;;; Change log:
 ;;
+;; 2019/02/23
+;;      * Significantly optimize the performance of switching tab by avoiding excessive calls `project-current'.
+;;
+;; 2018/12/27
+;;      * Tab will hide if ```awesome-tab-hide-tab-function``` return t, you can write your own code to customize hide rules.
+;;
+;; 2018/11/16
+;;  * Open new tab on right of current one.
+;;
+;; 2018/11/14
+;;      * Remove wheel features, emacser should only use the keyboard to operate Emacs.
+;;
+;; 2018/11/01
+;;      * Remove `projectile' depend.
+;;
+;; 2018/10/29
+;;      * Add `mwheel' depend.
+;;
 ;; 2018/09/29
 ;;      * Add new command `awesome-tab-kill-other-buffers-in-current-group'
 ;;      * Not enable mode default.
@@ -123,7 +139,6 @@
 ;;
 
 ;;; Require
-(require 'projectile)
 
 ;;; Code:
 ;;;;;;;;;;;;;;;;;;;;;;; Awesome-Tab source code ;;;;;;;;;;;;;;;;;;;;;;;
@@ -155,6 +170,12 @@ the tab bar is scrolled horizontally so the selected tab becomes
 visible."
   :group 'awesome-tab
   :type 'boolean)
+
+(defcustom awesome-tab-common-group-name "Common"
+  "If the current buffer does not belong to any project,
+the group name uses the name of this variable."
+  :group 'awesome-tab
+  :type 'string)
 
 (defvar awesome-tab-inhibit-functions '(awesome-tab-default-inhibit-function)
   "List of functions to be called before displaying the tab bar.
@@ -351,7 +372,7 @@ Return the tab found, or nil if not found."
 (defsubst awesome-tab-member (tab tabset)
   "Return non-nil if TAB is in TABSET."
   (or (eq (awesome-tab-tab-tabset tab) tabset)
-      (memq tab (awesome-tab-tabs tabset))))
+     (memq tab (awesome-tab-tabs tabset))))
 
 (defsubst awesome-tab-template (tabset)
   "Return the cached visual representation of TABSET.
@@ -404,19 +425,28 @@ Return the tab selected, or nil if nothing was selected."
 That is, the sub-list of tabs starting at the first visible one."
   (nthcdr (awesome-tab-start tabset) (awesome-tab-tabs tabset)))
 
-(defun awesome-tab-add-tab (tabset object &optional append)
-  "Add to TABSET a tab with value OBJECT if there isn't one there yet.
-If the tab is added, it is added at the beginning of the tab list,
-unless the optional argument APPEND is non-nil, in which case it is
-added at the end."
+(defun awesome-tab-add-tab (tabset object)
+  "Return tab if it has opend.
+Otherwise insert new tab on right of current tab."
   (let ((tabs (awesome-tab-tabs tabset)))
     (if (awesome-tab-get-tab object tabset)
         tabs
-      (let ((tab (awesome-tab-make-tab object tabset)))
+      (let* ((tab (awesome-tab-make-tab object tabset))
+             (selected (awesome-tab-selected-tab tabset))
+             (selected-index (cl-position (car selected) (mapcar 'car tabs))))
         (awesome-tab-set-template tabset nil)
-        (set tabset (if append
-                        (append tabs (list tab))
-                      (cons tab tabs)))))))
+        (set tabset (awesome-tab-insert-at tabs selected-index tab))
+        ))))
+
+(defun awesome-tab-insert-at (list index insert-element)
+  (let ((counter 0)
+        (result '()))
+    (dolist (element list)
+      (if (equal counter index)
+          (setq result (append result (list element insert-element)))
+        (setq result (append result (list element))))
+      (setq counter (+ 1 counter)))
+    result))
 
 (defun awesome-tab-delete-tab (tab)
   "Remove TAB from its tab set."
@@ -457,8 +487,8 @@ If optional argument UPDATE is non-nil, call the user defined function
 `awesome-tab-current-tabset-function' to obtain it.  Otherwise return the
 current cached copy."
   (and update awesome-tab-current-tabset-function
-       (setq awesome-tab-current-tabset
-             (funcall awesome-tab-current-tabset-function)))
+     (setq awesome-tab-current-tabset
+           (funcall awesome-tab-current-tabset-function)))
   awesome-tab-current-tabset)
 
 (defun awesome-tab-get-tabsets-tabset ()
@@ -536,13 +566,13 @@ background color of the `default' face otherwise."
 (defsubst awesome-tab-background-color ()
   "Return the background color of the tab bar."
   (or awesome-tab-background-color
-      (let* ((face 'awesome-tab-default)
-             (color (face-background face)))
-        (while (null color)
-          (or (facep (setq face (face-attribute face :inherit)))
-              (setq face 'default))
-          (setq color (face-background face)))
-        color)))
+     (let* ((face 'awesome-tab-default)
+            (color (face-background face)))
+       (while (null color)
+         (or (facep (setq face (face-attribute face :inherit)))
+            (setq face 'default))
+         (setq color (face-background face)))
+       color)))
 
 ;;; Buttons and separator look and feel
 ;;
@@ -668,12 +698,12 @@ If optional MARGIN is non-nil, it must be a number of pixels to add as
 an extra margin around the image."
   (let ((plist (cdr image)))
     (or (plist-get plist :ascent)
-        (setq plist (plist-put plist :ascent 'center)))
+       (setq plist (plist-put plist :ascent 'center)))
     (or (plist-get plist :mask)
-        (setq plist (plist-put plist :mask '(heuristic t))))
+       (setq plist (plist-put plist :mask '(heuristic t))))
     (or (not (natnump margin))
-        (plist-get plist :margin)
-        (plist-put plist :margin margin))
+       (plist-get plist :margin)
+       (plist-put plist :margin margin))
     (setcdr image plist))
   image)
 
@@ -701,7 +731,7 @@ The default is `mouse-1'."
       type
     (list (or (memq type '(mouse-2 mouse-3)) 'mouse-1)
           (or (event-start nil) ;; Emacs 21.4
-              (list (selected-window) (point) '(0 . 0) 0)))))
+             (list (selected-window) (point) '(0 . 0) 0)))))
 
 ;;; Buttons
 ;;
@@ -739,7 +769,7 @@ Pass mouse click events on a button to `awesome-tab-click-on-button'."
        `(lambda (,event)
           (interactive "@e")
           (and (awesome-tab-click-p ,event)
-               (awesome-tab-click-on-button ',name ,event)))))))
+             (awesome-tab-click-on-button ',name ,event)))))))
 
 ;;; Button callbacks
 ;;
@@ -789,7 +819,7 @@ Pass mouse click events on a tab to `awesome-tab-click-on-tab'."
        `(lambda (,event)
           (interactive "@e")
           (and (awesome-tab-click-p ,event)
-               (awesome-tab-click-on-tab ',tab ,event)))))))
+             (awesome-tab-click-on-tab ',tab ,event)))))))
 
 ;;; Tab bar construction
 ;;
@@ -903,13 +933,13 @@ Call `awesome-tab-tab-label-function' to obtain a label for TAB."
          atsel elts)
     ;; Initialize buttons and separator values.
     (or awesome-tab-separator-value
-        (awesome-tab-line-separator))
+       (awesome-tab-line-separator))
     (or awesome-tab-home-button-value
-        (awesome-tab-line-button 'home))
+       (awesome-tab-line-button 'home))
     (or awesome-tab-scroll-left-button-value
-        (awesome-tab-line-button 'scroll-left))
+       (awesome-tab-line-button 'scroll-left))
     (or awesome-tab-scroll-right-button-value
-        (awesome-tab-line-button 'scroll-right))
+       (awesome-tab-line-button 'scroll-right))
     ;; Track the selected tab to ensure it is always visible.
     (when awesome-tab--track-selected
       (while (not (memq sel tabs))
@@ -933,12 +963,12 @@ Call `awesome-tab-tab-label-function' to obtain a label for TAB."
           (apply 'insert (awesome-tab-line-buttons tabset))
           (setq start (point))
           (while (and (cdr elts) ;; Always show the selected tab!
-                      (progn
-                        (delete-region start (point-max))
-                        (goto-char (point-max))
-                        (apply 'insert elts)
-                        (goto-char (point-min))
-                        (> (vertical-motion 1) 0)))
+                    (progn
+                      (delete-region start (point-max))
+                      (goto-char (point-max))
+                      (apply 'insert elts)
+                      (goto-char (point-min))
+                      (> (vertical-motion 1) 0)))
             (awesome-tab-scroll tabset 1)
             (setq elts (cdr elts)))))
       (setq elts (nreverse elts))
@@ -969,7 +999,7 @@ Inhibit display of the tab bar in current window if any of the
    ((awesome-tab-current-tabset t)
     ;; When available, use a cached tab bar value, else recompute it.
     (or (awesome-tab-template awesome-tab-current-tabset)
-        (awesome-tab-line-format awesome-tab-current-tabset)))))
+       (awesome-tab-line-format awesome-tab-current-tabset)))))
 
 (defconst awesome-tab-header-line-format '(:eval (awesome-tab-line))
   "The tab bar header line format.")
@@ -978,11 +1008,11 @@ Inhibit display of the tab bar in current window if any of the
   "Inhibit display of the tab bar in specified windows.
 That is dedicated windows, and `checkdoc' status windows."
   (or (window-dedicated-p (selected-window))
-      (member (buffer-name)
-              (list " *Checkdoc Status*"
-                    (if (boundp 'ispell-choices-buffer)
-                        ispell-choices-buffer
-                      "*Choices*")))))
+     (member (buffer-name)
+             (list " *Checkdoc Status*"
+                   (if (boundp 'ispell-choices-buffer)
+                       ispell-choices-buffer
+                     "*Choices*")))))
 
 ;;; Cyclic navigation through tabs
 ;;
@@ -999,7 +1029,7 @@ Optional argument TYPE is a mouse event type (see the function
          ;; If navigation through groups is requested, and there is
          ;; only one group, navigate through visible tabs.
          (cycle (if (and (eq awesome-tab-cycle-scope 'groups)
-                         (not (cdr (awesome-tab-tabs ttabset))))
+                       (not (cdr (awesome-tab-tabs ttabset))))
                     'tabs
                   awesome-tab-cycle-scope))
          selected tab)
@@ -1121,112 +1151,6 @@ mouse-2, or mouse-3 click.  The default is a mouse-1 click."
   (interactive "p")
   (awesome-tab-click-on-button 'scroll-right (awesome-tab--mouse arg)))
 
-;;; Mouse-wheel support
-;;
-(require 'mwheel)
-
-;;; Compatibility
-;;
-(defconst awesome-tab--mwheel-up-event
-  (symbol-value (if (boundp 'mouse-wheel-up-event)
-                    'mouse-wheel-up-event
-                  'mouse-wheel-up-button)))
-
-(defconst awesome-tab--mwheel-down-event
-  (symbol-value (if (boundp 'mouse-wheel-down-event)
-                    'mouse-wheel-down-event
-                  'mouse-wheel-down-button)))
-
-(defsubst awesome-tab--mwheel-key (event-type)
-  "Return a mouse wheel key symbol from EVENT-TYPE.
-When EVENT-TYPE is a symbol return it.
-When it is a button number, return symbol `mouse-<EVENT-TYPE>'."
-  (if (symbolp event-type)
-      event-type
-    (intern (format "mouse-%s" event-type))))
-
-(defsubst awesome-tab--mwheel-up-p (event)
-  "Return non-nil if EVENT is a mouse-wheel up event."
-  (let ((x (event-basic-type event)))
-    (if (eq 'mouse-wheel x)
-        (< (car (cdr (cdr event))) 0) ;; Emacs 21.3
-      ;; Emacs > 21.3
-      (eq x awesome-tab--mwheel-up-event))))
-
-;;; Basic commands
-;;
-;;;###autoload
-(defun awesome-tab-mwheel-backward (event)
-  "Select the previous available tab.
-EVENT is the mouse event that triggered this command.
-Mouse-enabled equivalent of the command `awesome-tab-backward'."
-  (interactive "@e")
-  (awesome-tab-cycle t event))
-
-;;;###autoload
-(defun awesome-tab-mwheel-forward (event)
-  "Select the next available tab.
-EVENT is the mouse event that triggered this command.
-Mouse-enabled equivalent of the command `awesome-tab-forward'."
-  (interactive "@e")
-  (awesome-tab-cycle nil event))
-
-;;;###autoload
-(defun awesome-tab-mwheel-backward-group (event)
-  "Go to selected tab in the previous available group.
-If there is only one group, select the previous visible tab.
-EVENT is the mouse event that triggered this command.
-Mouse-enabled equivalent of the command `awesome-tab-backward-group'."
-  (interactive "@e")
-  (let ((awesome-tab-cycle-scope 'groups))
-    (awesome-tab-cycle t event)))
-
-;;;###autoload
-(defun awesome-tab-mwheel-forward-group (event)
-  "Go to selected tab in the next available group.
-If there is only one group, select the next visible tab.
-EVENT is the mouse event that triggered this command.
-Mouse-enabled equivalent of the command `awesome-tab-forward-group'."
-  (interactive "@e")
-  (let ((awesome-tab-cycle-scope 'groups))
-    (awesome-tab-cycle nil event)))
-
-;;;###autoload
-(defun awesome-tab-mwheel-backward-tab (event)
-  "Select the previous visible tab.
-EVENT is the mouse event that triggered this command.
-Mouse-enabled equivalent of the command `awesome-tab-backward-tab'."
-  (interactive "@e")
-  (let ((awesome-tab-cycle-scope 'tabs))
-    (awesome-tab-cycle t event)))
-
-;;;###autoload
-(defun awesome-tab-mwheel-forward-tab (event)
-  "Select the next visible tab.
-EVENT is the mouse event that triggered this command.
-Mouse-enabled equivalent of the command `awesome-tab-forward-tab'."
-  (interactive "@e")
-  (let ((awesome-tab-cycle-scope 'tabs))
-    (awesome-tab-cycle nil event)))
-
-;;; Wrappers when there is only one generic mouse-wheel event
-;;
-;;;###autoload
-(defun awesome-tab-mwheel-switch-tab (event)
-  "Select the next or previous tab according to EVENT."
-  (interactive "@e")
-  (if (awesome-tab--mwheel-up-p event)
-      (awesome-tab-mwheel-forward-tab event)
-    (awesome-tab-mwheel-backward-tab event)))
-
-;;;###autoload
-(defun awesome-tab-mwheel-switch-group (event)
-  "Select the next or previous group of tabs according to EVENT."
-  (interactive "@e")
-  (if (awesome-tab--mwheel-up-p event)
-      (awesome-tab-mwheel-forward-group event)
-    (awesome-tab-mwheel-backward-group event)))
-
 ;;; Minor modes
 ;;
 (defsubst awesome-tab-mode-on-p ()
@@ -1254,7 +1178,7 @@ hidden, it is shown again.  Signal an error if Awesome-Tab mode is off."
 ;;; ON
   (if awesome-tab-local-mode
       (if (and (local-variable-p 'header-line-format)
-               header-line-format)
+             header-line-format)
           ;; A local header line exists, hide it to show the tab bar.
           (progn
             ;; Fail in case of an inconsistency because another local
@@ -1334,55 +1258,6 @@ Returns non-nil if the new state is enabled.
       (awesome-tab-free-tabsets-store))
     ))
 
-;;; Awesome-Tab-Mwheel mode
-;;
-(defvar awesome-tab-mwheel-mode-map
-  (let ((km (make-sparse-keymap)))
-    (if (get 'mouse-wheel 'event-symbol-elements)
-        ;; Use one generic mouse wheel event
-        (define-key km [A-mouse-wheel]
-          'awesome-tab-mwheel-switch-group)
-      ;; Use separate up/down mouse wheel events
-      (let ((up   (awesome-tab--mwheel-key awesome-tab--mwheel-up-event))
-            (down (awesome-tab--mwheel-key awesome-tab--mwheel-down-event)))
-        (define-key km `[header-line ,down]
-          'awesome-tab-mwheel-backward-group)
-        (define-key km `[header-line ,up]
-          'awesome-tab-mwheel-forward-group)
-        (define-key km `[header-line (control ,down)]
-          'awesome-tab-mwheel-backward-tab)
-        (define-key km `[header-line (control ,up)]
-          'awesome-tab-mwheel-forward-tab)
-        (define-key km `[header-line (shift ,down)]
-          'awesome-tab-mwheel-backward)
-        (define-key km `[header-line (shift ,up)]
-          'awesome-tab-mwheel-forward)
-        ))
-    km)
-  "Keymap to use in Awesome-Tab-Mwheel mode.")
-
-;;;###autoload
-(define-minor-mode awesome-tab-mwheel-mode
-  "Toggle use of the mouse wheel to navigate through tabs or groups.
-With prefix argument ARG, turn on if positive, otherwise off.
-Returns non-nil if the new state is enabled.
-
-\\{awesome-tab-mwheel-mode-map}"
-  :group 'awesome-tab
-  :require 'awesome-tab
-  :global t
-  :keymap awesome-tab-mwheel-mode-map
-  (when awesome-tab-mwheel-mode
-    (unless (and mouse-wheel-mode awesome-tab-mode)
-      (awesome-tab-mwheel-mode -1))))
-
-(defun awesome-tab-mwheel-follow ()
-  "Toggle Awesome-Tab-Mwheel following Awesome-Tab and Mouse-Wheel modes."
-  (awesome-tab-mwheel-mode (if (and mouse-wheel-mode awesome-tab-mode) 1 -1)))
-
-(add-hook 'awesome-tab-mode-hook      'awesome-tab-mwheel-follow)
-(add-hook 'mouse-wheel-mode-hook 'awesome-tab-mwheel-follow)
-
 ;;; Buffer tabs
 ;;
 (defgroup awesome-tab-buffer nil
@@ -1421,16 +1296,7 @@ group.  Notice that it is better that a buffer belongs to one group.")
 Exclude buffers whose name starts with a space, when they are not
 visiting a file.  The current buffer is always included."
   (awesome-tab-filter
-   (lambda (x)
-     (let ((name (format "%s" x)))
-       (and
-        (not (string-prefix-p "*epc" name))
-        (not (string-prefix-p "*helm" name))
-        (not (string-prefix-p "*Compile-Log*" name))
-        (not (string-prefix-p "*lsp" name))
-        (not (and (string-prefix-p "magit" name)
-               (not (file-name-extension name))))
-        )))
+   'awesome-tab-hide-tab-function
    (delq nil
          (mapcar #'(lambda (b)
                      (cond
@@ -1465,7 +1331,7 @@ Return the the first group where the current buffer is."
                           (buffer-name)
                           (if awesome-tab-buffer-groups-function
                               (funcall awesome-tab-buffer-groups-function)
-                            '("Common")))))
+                            '(awesome-tab-common-group-name)))))
               (and awesome-tab-buffer-list-function
                  (funcall awesome-tab-buffer-list-function)))
              #'(lambda (e1 e2)
@@ -1481,7 +1347,7 @@ Return the the first group where the current buffer is."
                   ;; This is a new buffer, or a previously existing
                   ;; buffer that has been renamed, or moved to another
                   ;; group.  Update the tab set, and the display.
-                  (awesome-tab-add-tab tabset (car e) t)
+                  (awesome-tab-add-tab tabset (car e))
                   (awesome-tab-set-template tabset nil))
               (awesome-tab-make-tabset g (car e))))))
       ;; Remove tabs for buffers not found in cache or moved to other
@@ -1684,7 +1550,7 @@ TYPE is default option."
   (let* ((tabset (awesome-tab-current-tabset t))
          (ttabset (awesome-tab-get-tabsets-tabset))
          (cycle (if (and (eq awesome-tab-cycle-scope 'groups)
-                         (not (cdr (awesome-tab-tabs ttabset))))
+                       (not (cdr (awesome-tab-tabs ttabset))))
                     'tabs
                   awesome-tab-cycle-scope))
          selected tab)
@@ -1901,39 +1767,41 @@ Optional argument REVERSED default is move backward, if reversed is non-nil move
 ;; Rules to control buffer's group rules.
 (defvar awesome-tab-groups-hash (make-hash-table :test 'equal))
 
-(defun awesome-tab-init-groups-name ()
-  (interactive)
-  (setq awesome-tab-groups-hash (make-hash-table :test 'equal)))
+(defun awesome-tab-project-name ()
+  (let ((project-name (cdr (project-current))))
+    (if project-name
+        (format "Project: %s" (expand-file-name project-name))
+      awesome-tab-common-group-name)))
 
 (defun awesome-tab-get-group-name (buf)
   (let ((group-name (gethash buf awesome-tab-groups-hash)))
+    ;; Return group name cache if it exists for improve performance.
     (if group-name
         group-name
-      (awesome-tab-set-group-name buf))))
-
-(defun awesome-tab-set-group-name (buf)
-  (with-current-buffer buf
-    (let ((project-name (projectile-project-name)))
-      (puthash buf project-name awesome-tab-groups-hash)
-      project-name)))
+      ;; Otherwise try get group name with `project-current'.
+      ;; `project-current' is very slow, it will slow down Emacs if you call it when switch buffer.
+      (with-current-buffer buf
+        (let ((project-name (awesome-tab-project-name)))
+          (puthash buf project-name awesome-tab-groups-hash)
+          project-name)))))
 
 (defun awesome-tab-buffer-groups ()
   "`awesome-tab-buffer-groups' control buffers' group rules.
 
 Group awesome-tab with mode if buffer is derived from `eshell-mode' `emacs-lisp-mode' `dired-mode' `org-mode' `magit-mode'.
 All buffer name start with * will group to \"Emacs\".
-Other buffer group by `projectile-project-p' with project name."
+Other buffer group by `awesome-tab-get-group-name' with project name."
   (list
    (cond
     ((or (string-equal "*" (substring (buffer-name) 0 1))
-         (memq major-mode '(magit-process-mode
-                            magit-status-mode
-                            magit-diff-mode
-                            magit-log-mode
-                            magit-file-mode
-                            magit-blob-mode
-                            magit-blame-mode
-                            )))
+        (memq major-mode '(magit-process-mode
+                           magit-status-mode
+                           magit-diff-mode
+                           magit-log-mode
+                           magit-file-mode
+                           magit-blob-mode
+                           magit-blame-mode
+                           )))
      "Emacs")
     ((derived-mode-p 'eshell-mode)
      "EShell")
@@ -1944,10 +1812,7 @@ Other buffer group by `projectile-project-p' with project name."
     ((memq major-mode '(org-mode org-agenda-mode diary-mode))
      "OrgMode")
     (t
-     (if (projectile-project-p)
-         (awesome-tab-get-group-name (current-buffer))
-       "Common"))
-    )))
+     (awesome-tab-get-group-name (current-buffer))))))
 
 ;; Helm source for switching group in helm.
 (defvar helm-source-awesome-tab-group nil)
@@ -1973,6 +1838,17 @@ Other buffer group by `projectile-project-p' with project name."
            "Awesome-Tab Groups:"
            (awesome-tab-get-groups)
            :action #'awesome-tab-switch-group))))
+
+(defun awesome-tab-hide-tab-function (x)
+  (let ((name (format "%s" x)))
+    (and
+     (not (string-prefix-p "*epc" name))
+     (not (string-prefix-p "*helm" name))
+     (not (string-prefix-p "*Compile-Log*" name))
+     (not (string-prefix-p "*lsp" name))
+     (not (and (string-prefix-p "magit" name)
+            (not (file-name-extension name))))
+     )))
 
 (provide 'awesome-tab)
 
