@@ -294,11 +294,6 @@ Feel free to add hook in this option. ;)"
   :type '(repeat symbol)
   :group 'awesome-tab)
 
-(defcustom awesome-tab-style "wave"
-  "The style of tab."
-  :group 'awesome-tab
-  :type 'string)
-
 (defcustom awesome-tab-display-sticky-function-name nil
   "Non-nil to display sticky function name in tab.
 Sticky function is the function at the top of the current window sticky."
@@ -338,11 +333,6 @@ Set this option with nil if you don't like icon in tab."
           (const :tag "Replace icon" replace-icon)
           (const :tag "Left" left)
           (const :tag "Right" right)))
-
-(defcustom awesome-tab-face-height 130
-  "The height of tab face."
-  :group 'awesome-tab
-  :type 'int)
 
 (defvar-local awesome-tab-ace-state nil
   "Whether current buffer is doing `awesome-tab-ace-jump' or not.")
@@ -635,14 +625,26 @@ current cached copy."
 
 ;;; Faces
 ;;
+(defface awesome-tab-default
+  '(
+    (t
+     :inherit default
+     :height 1.3
+     ))
+  "Default face used in the tab bar."
+  :group 'awesome-tab)
 
 (defface awesome-tab-unselected
-  '((t))
+  '((t
+     (:inherit awesome-tab-default
+               :foreground "dark green" :overline "dark green")))
   "Face used for unselected tabs."
   :group 'awesome-tab)
 
 (defface awesome-tab-selected
-  '((t))
+  '((t
+     (:inherit awesome-tab-default :weight ultra-bold :width semi-expanded
+               :foreground "green3" :overline "green3")))
   "Face used for the selected tab."
   :group 'awesome-tab)
 
@@ -696,16 +698,21 @@ element."
                         'pointer 'arrow))))
     ))
 
+(defun awesome-tab-line-default-background ()
+  (let ((bg-mode (frame-parameter nil 'background-mode))
+        (bg-unspecified (string=
+                         (face-background 'default) "unspecified-bg")))
+    (cond
+     ((and bg-unspecified (eq bg-mode 'dark)) "gray20")
+     ((and bg-unspecified (eq bg-mode 'light)) "gray80")
+     (t (face-background  'default))))
+  )
+
 (defun awesome-tab-line-format (tabset)
   "Return the `header-line-format' value to display TABSET."
   (let* ((sel (awesome-tab-selected-tab tabset))
          (tabs (awesome-tab-view tabset))
-         (bg-mode (frame-parameter nil 'background-mode))
-         (bg-unspecified (string= (face-background 'default) "unspecified-bg"))
-         (padcolor (cond
-                    ((and bg-unspecified (eq bg-mode 'dark)) "gray20")
-                    ((and bg-unspecified (eq bg-mode 'light)) "gray80")
-                    (t (face-background  'default))))
+         (padcolor (awesome-tab-line-default-background))
          atsel elts)
     ;; Initialize buttons and separator values.
     (or awesome-tab-separator-value
@@ -1138,9 +1145,10 @@ Otherwise use `all-the-icons-icon-for-buffer' to fetch icon for buffer."
            (background (face-background face))
            (background (if background
                            background
-                         (face-background  'default)))
+                         (awesome-tab-line-default-background)))
            (underline (face-attribute face :underline))
            (overline (face-attribute face :overline))
+           (height (face-attribute face :height))
            (icon
             (cond
              ;; Use `all-the-icons-icon-for-file' if current file is exists.
@@ -1162,6 +1170,7 @@ Otherwise use `all-the-icons-icon-for-buffer' to fetch icon for buffer."
                           :background ,background
                           :underline  ,underline
                           :overline   ,overline
+                          :height     ,height
                           ))))))
 
 (defun awesome-tab-buffer-name (tab-buffer)
