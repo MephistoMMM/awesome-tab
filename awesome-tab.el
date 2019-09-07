@@ -1146,16 +1146,14 @@ Otherwise use `all-the-icons-icon-for-buffer' to fetch icon for buffer."
            (background (if background
                            background
                          (awesome-tab-line-default-background)))
-           (underline (face-attribute face :underline))
            (overline (face-attribute face :overline))
-           (height (face-attribute face :height))
            (icon
             (cond
              ;; Use `all-the-icons-icon-for-file' if current file is exists.
              ((and
                tab-file
                (file-exists-p tab-file))
-              (all-the-icons-icon-for-file tab-file :v-adjust -0.1 :height 1))
+              (all-the-icons-icon-for-file tab-file :v-adjust 0.1 :height 0.99))
              ;; Use `all-the-icons-icon-for-buffer' for current tab buffer at last.
              (t
               (with-current-buffer tab-buffer
@@ -1168,9 +1166,7 @@ Otherwise use `all-the-icons-icon-for-buffer' to fetch icon for buffer."
          icon
          'face `(:inherit ,(get-text-property 0 'face icon)
                           :background ,background
-                          :underline  ,underline
                           :overline   ,overline
-                          :height     ,height
                           ))))))
 
 (defun awesome-tab-buffer-name (tab-buffer)
